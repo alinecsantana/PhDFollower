@@ -637,11 +637,23 @@ const DEFAULT_TAGS = `human-agent teaming, HAIT, human-autonomy teaming, AI team
 // STATE & PERSISTENCE
 // ══════════════════════════════════════════
 const KEY = 'hato_v3';
+const SNAP_KEY = 'hato_snap_v1'; // resilience snapshot — never overwritten by cloud sync
 let S = {};
 let autoSaveTimer = null;
 
 function loadState() {
-  try { return JSON.parse(localStorage.getItem(KEY)) || {}; } catch(e) { return {}; }
+  try {
+    const main = JSON.parse(localStorage.getItem(KEY));
+    if (main && Object.keys(main).length > 0) return main;
+    // Main key empty/missing — try resilience snapshot
+    const snap = JSON.parse(localStorage.getItem(SNAP_KEY));
+    if (snap && Object.keys(snap).length > 0) {
+      console.warn('[HAT-O] Main key empty — restoring from snapshot');
+      localStorage.setItem(KEY, JSON.stringify(snap)); // restore
+      return snap;
+    }
+    return {};
+  } catch(e) { return {}; }
 }
 
 function collectState() {
@@ -737,7 +749,9 @@ function collectState() {
 function saveAll() {
   if (!editMode) { showToast('🔒 Desbloqueie para salvar'); return; }
   collectState();
-  localStorage.setItem(KEY, JSON.stringify(S));
+  const json = JSON.stringify(S);
+  localStorage.setItem(KEY, json);
+  localStorage.setItem(SNAP_KEY, json); // resilience snapshot
   showToast('✓ Progresso salvo');
   updateSaveStatus();
   if (cloudCfg.token) pushToCloud();
@@ -748,7 +762,9 @@ function scheduleSave() {
   clearTimeout(autoSaveTimer);
   autoSaveTimer = setTimeout(() => {
     collectState();
-    localStorage.setItem(KEY, JSON.stringify(S));
+    const json = JSON.stringify(S);
+    localStorage.setItem(KEY, json);
+    localStorage.setItem(SNAP_KEY, json); // resilience snapshot
     updateSaveStatus();
   }, 3000);
 }
@@ -1429,7 +1445,7 @@ function deleteItem(btn, selector, label) {
 loadCloudConfig();
 // If the hardcoded CLOUD_GIST_ID is not set, forget any stored gistId
 // to prevent autoSyncOnLoad from loading stale/empty cloud data
-if (!CLOUD_GIST_ID) { cloudCfg.gistId = '10d5dd7a9d886fd30930bf0878057dd5c'; }
+if (!CLOUD_GIST_ID) { cloudCfg.gistId = null; }
 S = loadState();
 
 // Ask for start date if not set
