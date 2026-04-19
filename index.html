@@ -251,9 +251,43 @@ table.matrix tr:last-child td{border-bottom:none}
 .modal-hint a{color:var(--teal)}
 .cloud-badge{display:inline-flex;align-items:center;gap:5px;font-size:11px;color:#166534;background:#DCFCE7;border:1px solid #BBF7D0;border-radius:6px;padding:5px 9px;margin-bottom:.9rem;width:100%}
 .cloud-badge-err{color:#991B1B;background:#FEE2E2;border-color:#FECACA}
+
+/* ── EDIT MODE ── */
+.lock-btn{display:flex;align-items:center;gap:5px;background:var(--sand);border:1.5px solid var(--border);border-radius:8px;padding:6px 13px;font-size:12px;font-weight:600;cursor:pointer;transition:all .15s;color:var(--navy);white-space:nowrap;font-family:'Open Sans',sans-serif}
+.lock-btn:hover{background:var(--border)}
+.lock-btn.unlocked{background:#FEF9C3;border-color:#D4A017;color:#7A4F00}
+.view-banner{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);background:var(--navy);color:#fff;font-size:12px;font-weight:600;padding:7px 18px;border-radius:20px;z-index:500;pointer-events:none;opacity:0;transition:opacity .3s;white-space:nowrap;box-shadow:var(--shadow-md)}
+.view-banner.show{opacity:1}
+
+/* VIEW MODE default: inputs/textareas are read-only; action buttons hidden */
+body:not(.edit-mode) input:not(.modal-input):not([type=file]),
+body:not(.edit-mode) textarea:not(.modal-input){pointer-events:none!important;user-select:text!important}
+body:not(.edit-mode) [contenteditable]{pointer-events:none!important;cursor:default!important}
+body:not(.edit-mode) .task-status,
+body:not(.edit-mode) .task-checkbox,
+body:not(.edit-mode) .badge-month{pointer-events:none!important}
+body:not(.edit-mode) .save-btn{opacity:.35;pointer-events:none!important}
+body:not(.edit-mode) #cloudBtn{opacity:.4;pointer-events:none!important}
+body:not(.edit-mode) .add-task-btn,
+body:not(.edit-mode) .del-add-link,
+body:not(.edit-mode) .task-add-link,
+body:not(.edit-mode) .del-link-remove,
+body:not(.edit-mode) .edit-only{display:none!important}
+
+/* DELETE buttons (edit-only) */
+.del-btn{display:flex;align-items:center;justify-content:center;background:none;border:none;cursor:pointer;color:var(--muted);padding:3px 5px;border-radius:5px;font-size:13px;line-height:1;transition:all .12s;flex-shrink:0}
+.del-btn:hover{background:var(--danger-bg);color:var(--danger)}
+.card{position:relative}
+.card-del-btn{position:absolute;top:7px;right:8px;font-size:12px;padding:2px 6px}
+
+/* Cloud modal inputs — ensure always visible */
+.modal-input{background:var(--white)!important;border:1.5px solid var(--border)!important;pointer-events:auto!important}
+.modal-input:focus{border-color:var(--teal)!important;outline:none!important;box-shadow:0 0 0 3px rgba(13,124,114,.1)!important}
+@keyframes shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
 </style>
 </head>
 <body>
+<div class="view-banner" id="viewBanner">🔒 Modo leitura — clique em Editar para modificar</div>
 
 <!-- START DATE MODAL -->
 <div class="modal-overlay" id="startModal">
@@ -311,6 +345,7 @@ table.matrix tr:last-child td{border-bottom:none}
           <button class="save-btn" onclick="saveAll()">
             <span class="icon">💾</span> Salvar
           </button>
+          <button class="lock-btn" id="lockBtn" onclick="toggleEditMode()" title="Bloquear / desbloquear edição">🔒 Editar</button>
         </div>
         <div class="save-status" id="saveStatus"></div>
         <div class="cloud-status" id="cloudStatus" style="display:none"><div class="cloud-dot" id="cloudDot"></div><span id="cloudStatusTxt"></span></div>
@@ -720,6 +755,7 @@ function collectState() {
 }
 
 function saveAll() {
+  if (!editMode) { showToast('🔒 Desbloqueie para salvar'); return; }
   collectState();
   localStorage.setItem(KEY, JSON.stringify(S));
   showToast('✓ Progresso salvo');
@@ -728,6 +764,7 @@ function saveAll() {
 }
 
 function scheduleSave() {
+  if (!editMode) return;
   clearTimeout(autoSaveTimer);
   autoSaveTimer = setTimeout(() => {
     collectState();
@@ -917,7 +954,8 @@ function appendTaskEl(container, t) {
       <div class="task-links" data-id="${t.id}"></div>
       <button class="task-add-link" onclick="addTaskLink(this)">+ link / evidência</button>
     </div>
-    <span class="task-status s-${t.status||'todo'}" data-id="${t.id}" data-status="${t.status||'todo'}" onclick="cycleStatus('${t.id}',this)">${t.status||'todo'}</span>`;
+    <span class="task-status s-${t.status||'todo'}" data-id="${t.id}" data-status="${t.status||'todo'}" onclick="cycleStatus('${t.id}',this)">${t.status||'todo'}</span>
+    <button class="del-btn edit-only" onclick="deleteItem(this,'.task','tarefa')" title="Remover tarefa">🗑</button>`;
   container.appendChild(el);
   const linksContainer = el.querySelector('.task-links');
   if (t.links && t.links.length) {
@@ -1023,6 +1061,7 @@ function renderRSL() {
     card.innerHTML = `<div class="card-header">
         <div class="card-header-icon" style="background:#EEF2FF">🔍</div>
         <input class="card-title rsl-title" value="${esc(r.title)}" style="font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);border:none;background:transparent;outline:none;cursor:text;width:100%;font-family:'Open Sans',sans-serif;padding:1px 3px;border-radius:3px" onfocus="this.style.background='rgba(0,0,0,.04)'" onblur="this.style.background='transparent';scheduleSave()">
+        <button class="del-btn card-del-btn edit-only" onclick="deleteItem(this,'.rsl-card','string de busca')" title="Remover card">🗑</button>
       </div>
       <div class="card-body">
         <div class="kw-section">
@@ -1087,8 +1126,9 @@ function appendPrismaStep(container, s, i) {
       <input class="prisma-label" value="${esc(s.label||'')}" oninput="scheduleSave()">
       <textarea class="prisma-desc" rows="2" oninput="autoResize(this);scheduleSave()">${esc(s.desc||'')}</textarea>
     </div>
-    <div style="margin-left:8px;margin-top:3px">
+    <div style="margin-left:8px;margin-top:3px;display:flex;flex-direction:column;gap:6px;align-items:center">
       <div class="task-checkbox ${s.done?'done':''}" onclick="this.classList.toggle('done');scheduleSave()"></div>
+      <button class="del-btn edit-only" onclick="deleteItem(this,'.prisma-step','etapa PRISMA')" title="Remover etapa" style="font-size:11px">🗑</button>
     </div>`;
   container.appendChild(el);
   setTimeout(() => { const ta = el.querySelector('.prisma-desc'); if (ta) autoResize(ta); }, 10);
@@ -1120,7 +1160,8 @@ function appendDeliverableEl(container, d) {
       <div class="del-links"></div>
       <button class="del-add-link" onclick="addDelLink(this)">+ link / evidência</button>
     </div>
-    <span class="task-status s-${d.status||'todo'}" data-status="${d.status||'todo'}" onclick="cycleDelStatus(this)">${d.status||'todo'}</span>`;
+    <span class="task-status s-${d.status||'todo'}" data-status="${d.status||'todo'}" onclick="cycleDelStatus(this)">${d.status||'todo'}</span>
+    <button class="del-btn edit-only" onclick="deleteItem(this,'.del-row','entrega')" title="Remover entrega" style="align-self:flex-start;margin-top:2px">🗑</button>`;
   container.appendChild(el);
   const linksContainer = el.querySelector('.del-links');
   if (d.links && d.links.length) {
@@ -1259,6 +1300,7 @@ function openCloudModal() {
     badge.style.display = 'none';
   }
   document.getElementById('cloudModal').classList.add('show');
+  setTimeout(() => document.getElementById('cloudTokenInput').focus(), 80);
 }
 
 function closeCloudModal() {
@@ -1342,6 +1384,7 @@ async function pushToCloud() {
 }
 
 async function pullFromCloud() {
+  if (!editMode) { closeCloudModal(); showToast('🔒 Desbloqueie para carregar dados'); return; }
   const token = document.getElementById('cloudTokenInput').value.trim() || cloudCfg.token;
   const gistId = document.getElementById('cloudGistInput').value.trim() || cloudCfg.gistId;
   if (!token || !gistId) { alert('Configure o token e o ID do Gist primeiro.'); return; }
@@ -1410,6 +1453,62 @@ document.getElementById('cloudModal').addEventListener('click', function(e) {
   if (e.target === this) this.classList.remove('show');
 });
 
+
+// ══════════════════════════════════════════
+// EDIT MODE (password-protected)
+// ══════════════════════════════════════════
+const EDIT_PWD = 'Keukenhof2025*';
+let editMode = false;
+
+function setEditMode(on) {
+  editMode = on;
+  document.body.classList.toggle('edit-mode', on);
+  const btn = document.getElementById('lockBtn');
+  const banner = document.getElementById('viewBanner');
+  if (on) {
+    btn.textContent = '🔓 Editando';
+    btn.classList.add('unlocked');
+    btn.title = 'Clique para bloquear';
+    banner.classList.remove('show');
+  } else {
+    btn.textContent = '🔒 Editar';
+    btn.classList.remove('unlocked');
+    btn.title = 'Clique para desbloquear edição';
+    banner.classList.add('show');
+  }
+}
+
+function toggleEditMode() {
+  if (editMode) {
+    if (confirm('Bloquear edição?')) { setEditMode(false); showToast('🔒 Modo leitura ativado'); }
+  } else {
+    const pwd = prompt('Senha de edição:');
+    if (pwd === null) return;
+    if (pwd === EDIT_PWD) {
+      setEditMode(true);
+      showToast('🔓 Modo de edição ativado');
+    } else {
+      showToast('⚠ Senha incorreta');
+      // small shake animation on the button
+      const btn = document.getElementById('lockBtn');
+      btn.style.animation = 'shake .3s';
+      setTimeout(() => btn.style.animation = '', 350);
+    }
+  }
+}
+
+// ══════════════════════════════════════════
+// DELETE helpers
+// ══════════════════════════════════════════
+function deleteItem(btn, selector, label) {
+  if (!editMode) return;
+  const item = btn.closest(selector);
+  if (!item) return;
+  if (!confirm('Remover esta ' + label + '?')) return;
+  item.remove();
+  scheduleSave();
+}
+
 // ══════════════════════════════════════════
 // INIT
 // ══════════════════════════════════════════
@@ -1429,6 +1528,7 @@ initNotes();
 initHeader();
 updateMonthIndicator();
 updateSaveStatus();
+setEditMode(false);
 setTimeout(updateAllProgress, 100);
 if (cloudCfg.token && cloudCfg.gistId) autoSyncOnLoad();
 
