@@ -267,7 +267,7 @@ body:not(.edit-mode) .task-status,
 body:not(.edit-mode) .task-checkbox,
 body:not(.edit-mode) .badge-month{pointer-events:none!important}
 body:not(.edit-mode) .save-btn{opacity:.35;pointer-events:none!important}
-body:not(.edit-mode) #cloudBtn{opacity:.4;pointer-events:none!important}
+
 body:not(.edit-mode) .add-task-btn,
 body:not(.edit-mode) .del-add-link,
 body:not(.edit-mode) .task-add-link,
@@ -1384,7 +1384,6 @@ async function pushToCloud() {
 }
 
 async function pullFromCloud() {
-  if (!editMode) { closeCloudModal(); showToast('🔒 Desbloqueie para carregar dados'); return; }
   const token = document.getElementById('cloudTokenInput').value.trim() || cloudCfg.token;
   const gistId = document.getElementById('cloudGistInput').value.trim() || cloudCfg.gistId;
   if (!token || !gistId) { alert('Configure o token e o ID do Gist primeiro.'); return; }
