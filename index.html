@@ -1254,16 +1254,15 @@ function showToast(msg) {
 
 
 // ══════════════════════════════════════════
-// CLOUD SYNC  (GitHub Gist — público)
+// CLOUD SYNC  (GitHub Gist público)
 // ══════════════════════════════════════════
 //
-// ► CONFIGURAÇÃO ÚNICA (dono do app):
-//   1. Clique em ☁ Nuvem, insira seu token (escopo: gist)
-//   2. O app cria um Gist público e exibe o ID
-//   3. Substitua '' abaixo pelo ID e republique no GitHub
-//   A partir daí qualquer visitante (anônimo) vê sempre a versão atual.
+// SETUP (uma vez):
+//  1. Clique em Nuvem, insira token (escopo: gist)
+//  2. App cria Gist público e mostra o ID
+//  3. Ponha o ID em CLOUD_GIST_ID abaixo e republique
 //
-const CLOUD_GIST_ID = '';   // ← coloque aqui o ID do Gist após o primeiro salvamento
+const CLOUD_GIST_ID = '';  // ex: 'a1b2c3d4e5f6...'
 
 const CLOUD_KEY = 'hato_cloud_v1';
 let cloudCfg = {};
@@ -1285,7 +1284,6 @@ function setCloudStatus(state, text) {
   txt.textContent = text || '';
 }
 
-// Shared fetch helper (write needs token; read of public Gist does not)
 async function gistRequest(method, gistId, payload, token) {
   const url = gistId
     ? 'https://api.github.com/gists/' + gistId
@@ -1301,21 +1299,19 @@ async function gistRequest(method, gistId, payload, token) {
   return res.json();
 }
 
-// Called on every page load — reads cloud without auth (public Gist)
 async function autoSyncOnLoad() {
-  const gistId = CLOUD_GIST_ID || cloudCfg.gistId;
+  const gistId = CLOUD_GIST_ID; // only load from hardcoded ID
   if (!gistId) return;
   setCloudStatus('syncing', 'Carregando da nuvem…');
   try {
-    const data = await gistRequest('GET', gistId, null, null); // no token = public read
+    const data = await gistRequest('GET', gistId, null, null);
     const file = data.files['hato-doutorado.json'];
-    if (!file) throw new Error('Arquivo não encontrado no Gist');
+    if (!file) throw new Error('Arquivo nao encontrado');
     let content = file.content;
     if (file.truncated) content = await (await fetch(file.raw_url)).text();
     S = JSON.parse(content);
     localStorage.setItem(KEY, JSON.stringify(S));
     setCloudStatus('synced', 'Nuvem ✓');
-    // Re-render with cloud data
     renderPhases();
     renderRSL();
     renderPrismaSteps();
@@ -1331,75 +1327,37 @@ async function autoSyncOnLoad() {
   }
 }
 
-// Owner-only: enter token → push to cloud
 function openCloudModal() {
   loadCloudConfig();
   const cur = cloudCfg.token ? cloudCfg.token.slice(0,8) + '…' : 'nenhum';
-  const token = prompt(
-    'TOKEN DO GITHUB
-' +
-    '─────────────────────────────
-' +
-    'Escopo necessário: gist
-' +
-    'Crie em: github.com/settings/tokens
-
-' +
-    'Token salvo: ' + cur,
-    cloudCfg.token || ''
-  );
+  const token = prompt('TOKEN DO GITHUB\n\nEscopo: gist\nCrie em: github.com/settings/tokens\n\nToken atual: ' + cur, cloudCfg.token || '');
   if (token === null) return;
-  if (!token.trim()) { showToast('⚠ Token não informado'); return; }
+  if (!token.trim()) { showToast('⚠ Token nao informado'); return; }
   cloudCfg.token = token.trim();
   saveCloudConfig();
   pushToCloud();
 }
 
-// Push current state to Gist (creates if CLOUD_GIST_ID empty, updates if set)
 async function pushToCloud() {
   loadCloudConfig();
-  if (!cloudCfg.token) { showToast('⚠ Configure o token primeiro (☁ Nuvem)'); return; }
+  if (!cloudCfg.token) { showToast('⚠ Configure o token primeiro (botao Nuvem)'); return; }
   setCloudStatus('syncing', 'Salvando na nuvem…');
   collectState();
   const targetId = CLOUD_GIST_ID || cloudCfg.gistId || null;
   try {
     const payload = {
       description: 'HAT-O · Plano de Doutorado',
-      public: true,   // público = leitura sem token para qualquer visitante
+      public: true,
       files: { 'hato-doutorado.json': { content: JSON.stringify(S, null, 2) } }
     };
-    const data = await gistRequest(
-      targetId ? 'PATCH' : 'POST',
-      targetId,
-      payload,
-      cloudCfg.token
-    );
+    const data = await gistRequest(targetId ? 'PATCH' : 'POST', targetId, payload, cloudCfg.token);
     cloudCfg.gistId = data.id;
     saveCloudConfig();
     const t = new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
     setCloudStatus('synced', 'Nuvem ✓ ' + t);
     showToast('☁ Salvo na nuvem');
-
-    // Se o CLOUD_GIST_ID ainda não está fixado no código, orienta a dona
     if (!CLOUD_GIST_ID) {
-      setTimeout(() => alert(
-        '✅  GIST CRIADO COM SUCESSO!
-
-' +
-        'Para que visitantes anônimos vejam sua versão,
-' +
-        'faça UMA edição no index.html do GitHub:
-
-' +
-        "Encontre:   const CLOUD_GIST_ID = '';
-" +
-        "Substitua:  const CLOUD_GIST_ID = '" + data.id + "';
-
-" +
-        'Depois faça commit. Pronto — qualquer pessoa
-' +
-        'verá sempre a versão mais recente automaticamente.'
-      ), 400);
+      setTimeout(() => alert('GIST CRIADO!\n\nEdite o index.html no GitHub, encontre:\n\n  const CLOUD_GIST_ID = \'\';\n\nSubstitua por:\n\n  const CLOUD_GIST_ID = \'' + data.id + '\';\n\nFaca commit. Pronto!'), 400);
     }
   } catch(err) {
     setCloudStatus('error', 'Nuvem ✗ ' + err.message);
@@ -1408,7 +1366,6 @@ async function pushToCloud() {
   }
 }
 
-// kept for compat (no longer used as modal)
 function closeCloudModal() {}
 
 // ══════════════════════════════════════════
@@ -1470,6 +1427,9 @@ function deleteItem(btn, selector, label) {
 // INIT
 // ══════════════════════════════════════════
 loadCloudConfig();
+// If the hardcoded CLOUD_GIST_ID is not set, forget any stored gistId
+// to prevent autoSyncOnLoad from loading stale/empty cloud data
+if (!CLOUD_GIST_ID) { cloudCfg.gistId = null; }
 S = loadState();
 
 // Ask for start date if not set
