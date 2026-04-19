@@ -298,24 +298,6 @@ body:not(.edit-mode) .edit-only{display:none!important}
     <button class="modal-btn" onclick="setStartDate()">Confirmar</button>
   </div>
 
-<!-- CLOUD SYNC MODAL -->
-<div class="modal-overlay" id="cloudModal">
-  <div class="modal">
-    <h2>☁ Sincronização Online</h2>
-    <p style="font-size:13px;color:var(--muted);margin-bottom:1rem;line-height:1.6">Salve em um <strong>Gist privado</strong> do GitHub e acesse de qualquer dispositivo.</p>
-    <div id="cloudBadge" style="display:none" class="cloud-badge"></div>
-    <label class="modal-input-label">Token do GitHub <small style="font-weight:400">(escopo <code>gist</code>)</small></label>
-    <input type="password" class="modal-input" id="cloudTokenInput" placeholder="ghp_xxxxxxxxxxxx" autocomplete="off" style="margin-bottom:.6rem">
-    <label class="modal-input-label">ID do Gist <small style="font-weight:400">(deixe vazio → cria automaticamente)</small></label>
-    <input type="text" class="modal-input" id="cloudGistInput" placeholder="Preenchido após o primeiro salvamento" style="margin-bottom:1rem">
-    <div class="modal-row" style="margin-bottom:8px">
-      <button class="modal-btn" onclick="connectAndSave()" style="margin-bottom:0">💾 Salvar na nuvem</button>
-      <button class="modal-btn modal-btn-secondary" onclick="pullFromCloud()" style="margin-bottom:0">⬇ Carregar</button>
-    </div>
-    <button class="modal-btn modal-btn-secondary" onclick="disconnectCloud()" style="width:100%;margin-top:4px">Desconectar</button>
-    <p class="modal-hint">Crie um token em <a href="https://github.com/settings/tokens/new?scopes=gist&description=HAT-O+Doutorado" target="_blank">github.com/settings/tokens</a> com escopo <strong>gist</strong>. Seus dados ficam em um Gist privado na sua conta.</p>
-  </div>
-</div>
 
 </div>
 
@@ -1282,37 +1264,58 @@ let cloudCfg = {};
 function loadCloudConfig() {
   try { cloudCfg = JSON.parse(localStorage.getItem(CLOUD_KEY)) || {}; } catch(e) { cloudCfg = {}; }
 }
-
 function saveCloudConfig() {
   localStorage.setItem(CLOUD_KEY, JSON.stringify(cloudCfg));
 }
 
 function openCloudModal() {
   loadCloudConfig();
-  document.getElementById('cloudTokenInput').value = cloudCfg.token || '';
-  document.getElementById('cloudGistInput').value = cloudCfg.gistId || '';
-  const badge = document.getElementById('cloudBadge');
-  if (cloudCfg.token && cloudCfg.gistId) {
-    badge.style.display = 'flex';
-    badge.className = 'cloud-badge';
-    badge.innerHTML = '✓ Conectado · <a href="https://gist.github.com/' + cloudCfg.gistId + '" target="_blank" style="color:inherit">ver Gist</a>';
-  } else {
-    badge.style.display = 'none';
-  }
-  document.getElementById('cloudModal').classList.add('show');
-  setTimeout(() => document.getElementById('cloudTokenInput').focus(), 80);
+
+  // Step 1 – ask for token
+  const token = prompt(
+    'TOKEN DO GITHUB\n\n' +
+    'Cole aqui o token com escopo "gist"\n' +
+    '(Crie em: github.com/settings/tokens)\n\n' +
+    'Token atual: ' + (cloudCfg.token ? cloudCfg.token.slice(0,8) + '...' : 'nenhum'),
+    cloudCfg.token || ''
+  );
+  if (token === null) return;   // user cancelled
+  if (!token.trim()) { alert('Token obrigatório. Operação cancelada.'); return; }
+  cloudCfg.token = token.trim();
+
+  // Step 2 – ask for gist ID (optional)
+  const gistId = prompt(
+    'ID DO GIST (opcional)\n\n' +
+    'Deixe em branco para criar um novo Gist automaticamente.\n' +
+    'Se já salvou antes, o ID salvo será usado.',
+    cloudCfg.gistId || ''
+  );
+  if (gistId === null) return;
+  if (gistId.trim()) cloudCfg.gistId = gistId.trim();
+
+  // Step 3 – ask what to do
+  const action = prompt(
+    'O QUE DESEJA FAZER?\n\n' +
+    '1 → Salvar dados locais na nuvem\n' +
+    '2 → Carregar dados da nuvem para cá\n' +
+    '3 → Apenas salvar configuração\n\n' +
+    'Digite 1, 2 ou 3:',
+    '1'
+  );
+  if (action === null) return;
+  saveCloudConfig();
+  if (action.trim() === '1') pushToCloud();
+  else if (action.trim() === '2') pullFromCloud();
+  else showToast('☁ Configuração salva');
 }
 
-function closeCloudModal() {
-  document.getElementById('cloudModal').classList.remove('show');
-}
+function closeCloudModal() {} // kept for compat
 
 function disconnectCloud() {
   if (!confirm('Desconectar da nuvem? Os dados locais ficam intactos.')) return;
   cloudCfg = {};
   saveCloudConfig();
   document.getElementById('cloudStatus').style.display = 'none';
-  closeCloudModal();
   showToast('☁ Desconectado da nuvem');
 }
 
@@ -1346,15 +1349,7 @@ async function gistRequest(method, gistId, payload) {
   return res.json();
 }
 
-async function connectAndSave() {
-  const token = document.getElementById('cloudTokenInput').value.trim();
-  const gistId = document.getElementById('cloudGistInput').value.trim();
-  if (!token) { alert('Informe o token do GitHub.'); return; }
-  cloudCfg.token = token;
-  if (gistId) cloudCfg.gistId = gistId;
-  closeCloudModal();
-  await pushToCloud();
-}
+async function connectAndSave() { await pushToCloud(); }
 
 async function pushToCloud() {
   if (!cloudCfg.token) return;
@@ -1384,15 +1379,13 @@ async function pushToCloud() {
 }
 
 async function pullFromCloud() {
-  const token = document.getElementById('cloudTokenInput').value.trim() || cloudCfg.token;
-  const gistId = document.getElementById('cloudGistInput').value.trim() || cloudCfg.gistId;
-  if (!token || !gistId) { alert('Configure o token e o ID do Gist primeiro.'); return; }
-  cloudCfg.token = token;
-  cloudCfg.gistId = gistId;
-  closeCloudModal();
+  if (!cloudCfg.token || !cloudCfg.gistId) {
+    showToast('⚠ Configure o token e o Gist ID primeiro');
+    return;
+  }
   setCloudStatus('syncing', 'Carregando…');
   try {
-    const data = await gistRequest('GET', gistId, null);
+    const data = await gistRequest('GET', cloudCfg.gistId, null);
     const file = data.files['hato-doutorado.json'];
     if (!file) throw new Error('Arquivo não encontrado no Gist');
     let content = file.content;
@@ -1447,10 +1440,6 @@ async function autoSyncOnLoad() {
     console.warn('Auto-sync on load failed:', err.message);
   }
 }
-
-document.getElementById('cloudModal').addEventListener('click', function(e) {
-  if (e.target === this) this.classList.remove('show');
-});
 
 
 // ══════════════════════════════════════════
