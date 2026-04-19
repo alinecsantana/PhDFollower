@@ -1278,7 +1278,7 @@ function showToast(msg) {
 //  2. App cria Gist público e mostra o ID
 //  3. Ponha o ID em CLOUD_GIST_ID abaixo e republique
 //
-const CLOUD_GIST_ID = '';  // ex: 'a1b2c3d4e5f6...'
+const CLOUD_GIST_ID = '10d5dd7a9d86fd30930bf0878057dd5c';  // ex: 'a1b2c3d4e5f6...'
 
 const CLOUD_KEY = 'hato_cloud_v1';
 let cloudCfg = {};
@@ -1445,7 +1445,7 @@ function deleteItem(btn, selector, label) {
 loadCloudConfig();
 // If the hardcoded CLOUD_GIST_ID is not set, forget any stored gistId
 // to prevent autoSyncOnLoad from loading stale/empty cloud data
-if (!CLOUD_GIST_ID) { cloudCfg.gistId = '10d5dd7a9d86fd30930bf0878057dd5c'; }
+if (!CLOUD_GIST_ID) { cloudCfg.gistId = null; }
 S = loadState();
 
 // Ask for start date if not set
